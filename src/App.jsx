@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-const TMDB_API_KEY = '07d3978b5882d68e296023f77ae46c95';
+const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY;
 
 export default function App() {
   const [query, setQuery] = useState('Inception');
