@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 const TMDB_API_KEY = import.meta.env.VITE_TMDB_API_KEY;
 
 export default function App() {
-  const [query, setQuery] = useState('Inception');
+  const [query, setQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [selectedMovie, setSelectedMovie] = useState(null);
   
@@ -11,6 +11,10 @@ export default function App() {
   const [hasChosenMovie, setHasChosenMovie] = useState(false);
   const [isAmbientDimmed, setIsAmbientDimmed] = useState(false);
   
+  // Dynamic Palette Syncing State (Default Letterboxd Green)
+  const [accentColor, setAccentColor] = useState('#00e054');
+  const canvasRef = useRef(null);
+
   // Extended film metadata
   const [cast, setCast] = useState([]);
   const [director, setDirector] = useState('');
@@ -24,7 +28,7 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Lock scrolling globally on mounted body and html tags
+  // Lock scrolling globally
   useEffect(() => {
     document.documentElement.style.height = '100%';
     document.documentElement.style.overflow = 'hidden';
@@ -38,11 +42,69 @@ export default function App() {
     document.body.style.fontFamily = 'Graphik-Regular, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
   }, []);
 
+  // Extract primary vibrant color from poster image via hidden HTML5 Canvas
+  const extractAccentColor = (imageUrl) => {
+    if (!imageUrl) {
+      setAccentColor('#00e054');
+      return;
+    }
+
+    const img = new Image();
+    img.crossOrigin = 'Anonymous';
+    img.src = imageUrl;
+
+    img.onload = () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+
+      const ctx = canvas.getContext('2d');
+      canvas.width = 50;
+      canvas.height = 75;
+      ctx.drawImage(img, 0, 0, 50, 75);
+
+      try {
+        const imageData = ctx.getImageData(0, 0, 50, 75).data;
+        let rSum = 0, gSum = 0, bSum = 0, count = 0;
+
+        // Sample pixels, ignoring near-blacks and near-whites for richer color sampling
+        for (let i = 0; i < imageData.length; i += 16) {
+          const r = imageData[i];
+          const g = imageData[i + 1];
+          const b = imageData[i + 2];
+
+          const brightness = (r + g + b) / 3;
+          if (brightness > 35 && brightness < 220) {
+            rSum += r;
+            gSum += g;
+            bSum += b;
+            count++;
+          }
+        }
+
+        if (count > 0) {
+          const avgR = Math.round(rSum / count);
+          const avgG = Math.round(gSum / count);
+          const avgB = Math.round(bSum / count);
+          setAccentColor(`rgb(${avgR}, ${avgG}, ${avgB})`);
+        } else {
+          setAccentColor('#00e054');
+        }
+      } catch (e) {
+        setAccentColor('#00e054'); // Fallback if cross-origin blocked
+      }
+    };
+
+    img.onerror = () => {
+      setAccentColor('#00e054');
+    };
+  };
+
   // Search API call fetching top TWO matches
   useEffect(() => {
     if (!query.trim()) {
       setSearchResults([]);
       setSelectedMovie(null);
+      setAccentColor('#00e054');
       return;
     }
 
@@ -69,6 +131,10 @@ export default function App() {
         const topTwo = searchData.results.slice(0, 2);
         setSearchResults(topTwo);
         setSelectedMovie(topTwo[0]);
+
+        if (topTwo[0]?.poster_path) {
+          extractAccentColor(`https://image.tmdb.org/t/p/w185${topTwo[0].poster_path}`);
+        }
       } catch (err) {
         if (!cancelled) {
           setError('ERROR LOADING FILM DATA');
@@ -139,6 +205,9 @@ export default function App() {
   const handleSelectMovie = (movie) => {
     setSelectedMovie(movie);
     setHasChosenMovie(true);
+    if (movie.poster_path) {
+      extractAccentColor(`https://image.tmdb.org/t/p/w185${movie.poster_path}`);
+    }
   };
 
   const handleBackToSearch = () => {
@@ -158,7 +227,7 @@ export default function App() {
     const hasHalf = stars % 1 !== 0;
     
     return (
-      <span style={styles.starRating} title={`${voteAverage.toFixed(1)} / 10`}>
+      <span style={{ ...styles.starRating, color: accentColor }} title={`${voteAverage.toFixed(1)} / 10`}>
         {'★'.repeat(fullStars)}
         {hasHalf ? '½' : ''}
       </span>
@@ -167,6 +236,9 @@ export default function App() {
 
   return (
     <div style={styles.pageWrapper}>
+      {/* Hidden canvas for palette sampling */}
+      <canvas ref={canvasRef} style={{ display: 'none' }} />
+
       <style>{`
         html, body {
           overflow: hidden !important;
@@ -188,15 +260,15 @@ export default function App() {
           cursor: pointer;
           flex: 1;
           max-width: 170px;
-          transition: border-color 0.15s ease, transform 0.15s ease;
+          transition: border-color 0.3s ease, transform 0.15s ease;
           border: 2px solid transparent;
         }
         .lb-poster-card:hover {
-          border-color: #00e054 !important;
+          border-color: ${accentColor} !important;
           transform: translateY(-2px);
         }
         .lb-input:focus {
-          border-color: #ff8000 !important;
+          border-color: ${accentColor} !important;
           color: #fff !important;
         }
         .tab-btn {
@@ -209,11 +281,11 @@ export default function App() {
           padding: 6px 12px;
           cursor: pointer;
           border-bottom: 2px solid transparent;
-          transition: all 0.15s ease;
+          transition: all 0.2s ease;
         }
         .tab-btn.active {
           color: #fff;
-          border-bottom-color: #00e054;
+          border-bottom-color: ${accentColor};
         }
         .dim-toggle-btn {
           background: #2c3440;
@@ -225,11 +297,11 @@ export default function App() {
           padding: 5px 10px;
           border-radius: 3px;
           cursor: pointer;
-          transition: all 0.15s ease;
+          transition: all 0.2s ease;
         }
         .dim-toggle-btn:hover {
           color: #fff;
-          border-color: #00e054;
+          border-color: ${accentColor};
         }
         .back-btn {
           background: transparent;
@@ -241,10 +313,10 @@ export default function App() {
           padding: 5px 12px;
           border-radius: 3px;
           cursor: pointer;
-          transition: all 0.15s ease;
+          transition: all 0.2s ease;
         }
         .back-btn:hover {
-          border-color: #ff8000;
+          border-color: ${accentColor};
           color: #fff;
         }
         .ext-link {
@@ -257,13 +329,24 @@ export default function App() {
           border-radius: 3px;
           background: #242c34;
           border: 1px solid rgba(255,255,255,0.05);
-          transition: all 0.15s ease;
+          transition: all 0.2s ease;
         }
         .ext-link:hover {
           color: #fff;
-          border-color: #00e054;
+          border-color: ${accentColor};
         }
       `}</style>
+
+      {/* Dynamic Backdrop with Synced Color Blend */}
+      {selectedMovie?.backdrop_path && (
+        <div
+          style={{
+            ...styles.backdropLayer,
+            backgroundImage: `linear-gradient(to bottom, rgba(20, 24, 28, 0.4) 0%, rgba(20, 24, 28, 0.85) 65%, #14181c 100%), url(https://image.tmdb.org/t/p/w1280${selectedMovie.backdrop_path})`,
+            opacity: isAmbientDimmed ? 0.08 : 0.35,
+          }}
+        />
+      )}
 
       <main
         style={{
@@ -365,8 +448,14 @@ export default function App() {
               )}
             </div>
 
-            {/* Video Viewport */}
-            <div style={styles.viewportFrame}>
+            {/* Video Viewport with Dynamic Palette Ambient Glow */}
+            <div
+              style={{
+                ...styles.viewportFrame,
+                boxShadow: `0 10px 30px rgba(0,0,0,0.6), 0 0 20px ${accentColor}33`,
+                borderColor: `${accentColor}44`,
+              }}
+            >
               {activeTab === 'stream' ? (
                 <iframe
                   key={`stream-${selectedMovie.id}`}
@@ -422,16 +511,43 @@ export default function App() {
                 )}
               </header>
 
-              {/* Specs */}
+              {/* Specs with Synced Color Badges */}
               <div style={styles.specsRow}>
-                {runtime && <span style={styles.specItem}>{runtime} MINS</span>}
+                {runtime && (
+                  <span
+                    style={{
+                      ...styles.specItem,
+                      color: accentColor,
+                      backgroundColor: `${accentColor}15`,
+                      borderColor: `${accentColor}35`,
+                    }}
+                  >
+                    {runtime} MINS
+                  </span>
+                )}
                 {genres.length > 0 && (
-                  <span style={styles.specItem}>
+                  <span
+                    style={{
+                      ...styles.specItem,
+                      color: accentColor,
+                      backgroundColor: `${accentColor}15`,
+                      borderColor: `${accentColor}35`,
+                    }}
+                  >
                     {genres.map((g) => g.name.toUpperCase()).join(' · ')}
                   </span>
                 )}
                 {budget > 0 && (
-                  <span style={styles.specItem}>BUDGET {formatCurrency(budget)}</span>
+                  <span
+                    style={{
+                      ...styles.specItem,
+                      color: accentColor,
+                      backgroundColor: `${accentColor}15`,
+                      borderColor: `${accentColor}35`,
+                    }}
+                  >
+                    BUDGET {formatCurrency(budget)}
+                  </span>
                 )}
               </div>
 
@@ -499,6 +615,18 @@ const styles = {
     boxSizing: 'border-box',
     backgroundColor: '#14181c',
     overflow: 'hidden',
+    position: 'relative',
+  },
+  backdropLayer: {
+    position: 'absolute',
+    inset: 0,
+    backgroundSize: 'cover',
+    backgroundPosition: 'center top',
+    filter: 'blur(8px)',
+    transform: 'scale(1.04)',
+    zIndex: 0,
+    pointerEvents: 'none',
+    transition: 'opacity 0.6s ease',
   },
   contentContainer: {
     width: '100%',
@@ -508,6 +636,8 @@ const styles = {
     flexDirection: 'column',
     alignItems: 'center',
     overflow: 'hidden',
+    zIndex: 1,
+    position: 'relative',
   },
   centeredSearchBlock: {
     width: '100%',
@@ -534,7 +664,7 @@ const styles = {
     fontWeight: '600',
     outline: 'none',
     boxSizing: 'border-box',
-    transition: 'all 0.15s ease',
+    transition: 'border-color 0.3s ease',
   },
   posterImage: {
     width: '100%',
@@ -602,8 +732,8 @@ const styles = {
     overflow: 'hidden',
     backgroundColor: '#11161b',
     border: '1px solid rgba(255,255,255,0.08)',
-    boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
     flexShrink: 0,
+    transition: 'box-shadow 0.4s ease, border-color 0.4s ease',
   },
   iframe: {
     width: '100%',
@@ -612,7 +742,8 @@ const styles = {
   },
   metadataPanel: {
     width: '100%',
-    backgroundColor: '#1b2228',
+    backgroundColor: 'rgba(27, 34, 40, 0.92)',
+    backdropFilter: 'blur(8px)',
     border: '1px solid rgba(255,255,255,0.08)',
     borderRadius: '4px',
     padding: '12px 16px',
@@ -657,9 +788,9 @@ const styles = {
     alignItems: 'center',
   },
   starRating: {
-    color: '#00e054',
     fontSize: '15px',
     letterSpacing: '1px',
+    transition: 'color 0.3s ease',
   },
   specsRow: {
     display: 'flex',
@@ -667,14 +798,13 @@ const styles = {
     gap: '6px',
     fontSize: '10px',
     letterSpacing: '0.06em',
-    color: '#00e054',
     fontWeight: '700',
   },
   specItem: {
-    backgroundColor: 'rgba(0, 224, 84, 0.1)',
     padding: '2px 6px',
     borderRadius: '3px',
-    border: '1px solid rgba(0, 224, 84, 0.2)',
+    border: '1px solid',
+    transition: 'all 0.3s ease',
   },
   synopsis: {
     margin: 0,
